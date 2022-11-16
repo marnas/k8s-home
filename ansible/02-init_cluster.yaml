@@ -1,0 +1,59 @@
+- hosts: k8s_master
+  become: true
+  remote_user: ubuntu
+  
+  vars_files:
+    - 00-ansible_vars.yaml
+
+  tasks:
+  - name: Initialize Kubernetes cluster
+    command: "kubeadm init --apiserver-advertise-address={{ master_ip }}  --apiserver-cert-extra-sans={{ master_ip }} --pod-network-cidr={{ pod_cidr }} --node-name {{ master_hostname }}"
+    args:
+      creates: /etc/kubernetes/admin.conf # skip this task if the file already exists
+    # register: kube_init
+
+  - name: Setup kubeconfig
+    command: "{{ item }}"
+    with_items:
+     - mkdir -p /home/{{ username }}/.kube
+     - cp -i /etc/kubernetes/admin.conf /home/{{ username }}/.kube/config
+    args:
+      creates: /home/{{ username }}/.kube/config # skip this task if the file already exists
+
+  - name: Set kubeconfig right permissions
+    command: "{{ item }}"
+    with_items:
+     - chown {{ username }}:{{ username }} /home/{{ username }}/.kube/config
+
+  # - name: Copy Kubeconfig
+  #   delegate_to: localhost
+  #   copy:
+  #     src: ./kubeconfig
+  #     dest: /home/{{ username }}/.kube/config
+        
+  - name: Install calico pod network
+    become: false
+    command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+
+  - name: Generate join command
+    command: kubeadm token create --print-join-command
+    register: join_command
+
+  - name: "Add K8S join command to dummy host"
+    add_host:
+      name:   "join_command_HOLDER"
+      command:  "{{ join_command.stdout }}"
+
+- hosts: k8s_workers
+  remote_user: ubuntu
+  become: yes
+  tasks:
+
+  # - name:
+  #   debug:
+  #     msg: "{{ hostvars['join_command_HOLDER']['command'] }}"
+
+  - name: Run Join command
+    command: "{{ hostvars['join_command_HOLDER']['command'] }}"
+    args:
+      creates: /etc/kubernetes/kubelet.conf
