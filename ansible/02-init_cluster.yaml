@@ -31,9 +31,17 @@
   #     src: ./kubeconfig
   #     dest: /home/{{ username }}/.kube/config
         
-  - name: Install calico pod network
+  - name: Install calico pod network operator
     become: false
-    command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+    command: kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/tigera-operator.yaml
+
+  - name: Install calico pod network custom resource
+    become: false
+    command: kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/custom-resources.yaml
+
+  - name: Remove taints from master node
+    become: false
+    command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 
   - name: Generate join command
     command: kubeadm token create --print-join-command
